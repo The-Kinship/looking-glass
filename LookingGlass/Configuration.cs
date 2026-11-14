@@ -12,6 +12,9 @@ public class Configuration : IPluginConfiguration
     /// <summary>Your Penumbra mod folder, only if it can't be found automatically ("" = find it from Penumbra's settings).</summary>
     public string ModFolderOverride { get; set; } = "";
 
+    /// <summary>Your screenshot folder, only if it isn't the game's usual one ("" = Documents/My Games/FINAL FANTASY XIV - A Realm Reborn/screenshots).</summary>
+    public string ScreenshotFolder { get; set; } = "";
+
     /// <summary>Your own info for each mod, by the mod's folder name.</summary>
     public Dictionary<string, ModInfo> Info { get; set; } = new();
 
@@ -43,6 +46,13 @@ public class ModInfo
     /// <summary>Your own tags, separated by commas.</summary>
     public string Tags { get; set; } = "";
     public string Notes { get; set; } = "";
+
+    /// <summary>The preview picture's file name in the plugin's images folder ("" = none).</summary>
+    public string ImageFile { get; set; } = "";
+    /// <summary>Framing: how far it's zoomed in (1 = whole picture) and where the middle of the view is (0 to 1).</summary>
+    public float Zoom { get; set; } = 1f;
+    public float CenterX { get; set; } = 0.5f;
+    public float CenterY { get; set; } = 0.5f;
 
     /// <summary>Everything you typed, lower case, for searching.</summary>
     public string SearchText() => string.Join("\n", Type, MadeFor, Tags, Notes, Favorite ? "favorite favourite" : "").ToLowerInvariant();

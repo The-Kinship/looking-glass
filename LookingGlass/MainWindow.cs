@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
+using Dalamud.Interface.ImGuiFileDialog;
 using Dalamud.Interface.Windowing;
 
 namespace LookingGlass;
@@ -27,6 +28,12 @@ public sealed class MainWindow : Window
     private bool searchActive;
     private string typeFilter = "";      // "" = all types, "(not set)" = no type picked yet
     private bool favoritesOnly;
+    private int pictureFilter;   // 0 = all, 1 = with a picture, 2 = no picture yet
+    private static readonly string[] PictureFilterNames = { "With or without pictures", "With a picture", "No picture yet" };
+    private readonly FileDialogManager fileDialog = new();
+    private string imageMessage = "";
+    private string imageMessageFor = "";
+    private string shotFolderTyping = "";
 
     public MainWindow() : base("Rafter Cat's Looking Glass##LookingGlassMain")
     {
@@ -52,6 +59,9 @@ public sealed class MainWindow : Window
                 else if (folderFilter.Length > 0 && !m.InFolder(folderFilter)) return false;
                 var info = cfg.InfoFor(m.Dir);
                 if (favoritesOnly && info?.Favorite != true) return false;
+                var hasPicture = (info?.ImageFile.Length ?? 0) > 0;
+                if (pictureFilter == 1 && !hasPicture) return false;
+                if (pictureFilter == 2 && hasPicture) return false;
                 if (typeFilter == "(not set)" && (info?.Type ?? "").Length > 0) return false;
                 if (typeFilter.Length > 0 && typeFilter != "(not set)" && info?.Type != typeFilter) return false;
                 if (words.Length == 0) return true;
@@ -98,6 +108,14 @@ public sealed class MainWindow : Window
             foreach (var t in ModInfo.Types.Where(t => t.Length > 0))
                 if (ImGui.Selectable(t + "##t", t == typeFilter)) typeFilter = t;
             if (ImGui.Selectable("(not set)", typeFilter == "(not set)")) typeFilter = "(not set)";
+            ImGui.EndCombo();
+        }
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(180f);
+        if (ImGui.BeginCombo("##pics", PictureFilterNames[pictureFilter]))
+        {
+            for (var i = 0; i < PictureFilterNames.Length; i++)
+                if (ImGui.Selectable(PictureFilterNames[i], i == pictureFilter)) pictureFilter = i;
             ImGui.EndCombo();
         }
         ImGui.SameLine();
@@ -162,6 +180,7 @@ public sealed class MainWindow : Window
         ImGui.EndChild();
 
         DrawSettings(lib);
+        fileDialog.Draw();
     }
 
     /// <summary>Every Penumbra folder that has mods in it (and the folders above them), in order.</summary>
@@ -215,9 +234,7 @@ public sealed class MainWindow : Window
         if ((DateTime.UtcNow - copiedAt).TotalSeconds < 4) ImGui.TextColored(Dim, copiedNote);
 
         ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.TextColored(Dim, "[Preview image: coming in piece 3]");
-        ImGui.Separator();
+        DrawPreview(mod);
         ImGui.Spacing();
 
         DrawInfoCard(mod);
@@ -245,6 +262,92 @@ public sealed class MainWindow : Window
             ImGui.TextUnformatted(mod.Description);
         }
         ImGui.PopTextWrapPos();
+    }
+
+    /// <summary>The preview picture (framed to your zoom), with buttons to add, replace or remove it.</summary>
+    private void DrawPreview(ModEntry mod)
+    {
+        var info = Plugin.Config.InfoFor(mod.Dir);
+        var wrap = Previews.Get(info);
+        var boxW = Math.Max(100f, ImGui.GetContentRegionAvail().X - 8f);
+        var boxH = Math.Min(380f, boxW * 0.75f);
+
+        if (wrap != null && info != null)
+        {
+            // The part of the picture to show: a window 1/zoom the size of the picture, centred where you set it.
+            var z = Math.Clamp(info.Zoom, 1f, 6f);
+            var half = 0.5f / z;
+            var cx = Math.Clamp(info.CenterX, half, 1f - half);
+            var cy = Math.Clamp(info.CenterY, half, 1f - half);
+            var uv0 = new Vector2(cx - half, cy - half);
+            var uv1 = new Vector2(cx + half, cy + half);
+            var aspect = (float)wrap.Width / Math.Max(1, wrap.Height);
+            var size = aspect > boxW / boxH ? new Vector2(boxW, boxW / aspect) : new Vector2(boxH * aspect, boxH);
+            ImGui.Image(wrap.Handle, size, uv0, uv1);
+        }
+        else if (info != null && info.ImageFile.Length > 0)
+        {
+            ImGui.Dummy(new Vector2(boxW, 40f));
+            ImGui.TextColored(Dim, "Loading picture...");
+        }
+        else
+        {
+            ImGui.TextColored(Dim, "No preview yet. Put the mod on, take a screenshot, then press \"Use my last screenshot\".");
+        }
+
+        if (ImGui.Button(info?.ImageFile.Length > 0 ? "Replace with my last screenshot" : "Use my last screenshot"))
+        {
+            var shot = Previews.LatestScreenshot();
+            ShowImageMessage(mod.Dir, shot == null
+                ? "No screenshots found in " + Previews.ScreenshotDir() + " (you can change the folder in Settings)."
+                : Previews.Attach(mod.Dir, shot.FullName) ?? $"Added {shot.Name} (taken {shot.LastWriteTime:t}).");
+        }
+        if (ImGui.IsItemHovered())
+        {
+            var shot = Previews.LatestScreenshot();
+            ImGui.SetTooltip(shot == null ? "No screenshots found yet." : $"Your newest screenshot: {shot.Name}\nTaken {shot.LastWriteTime:g}");
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Pick a picture file..."))
+        {
+            var dir = mod.Dir;
+            fileDialog.OpenFileDialog("Pick a preview picture", "Pictures{.png,.jpg,.jpeg,.bmp}", (ok, path) =>
+            {
+                if (ok) ShowImageMessage(dir, Previews.Attach(dir, path) ?? "Picture added.");
+            });
+        }
+        if (info?.ImageFile.Length > 0)
+        {
+            ImGui.SameLine();
+            if (ImGui.Button("Remove picture")) { Previews.Remove(mod.Dir); ShowImageMessage(mod.Dir, "Picture removed."); }
+        }
+        if (imageMessageFor == mod.Dir && imageMessage.Length > 0) ImGui.TextColored(Dim, imageMessage);
+
+        // Framing: zoom in on your character and move the view around.
+        if (wrap != null && info != null && ImGui.TreeNode("Adjust framing"))
+        {
+            var cfg = Plugin.Config;
+            var zoom = info.Zoom;
+            ImGui.SetNextItemWidth(200f);
+            if (ImGui.SliderFloat("Zoom", ref zoom, 1f, 6f, "%.1fx")) info.Zoom = zoom;
+            if (ImGui.IsItemDeactivatedAfterEdit()) cfg.Save();
+            var x = info.CenterX;
+            ImGui.SetNextItemWidth(200f);
+            if (ImGui.SliderFloat("Left / right", ref x, 0f, 1f, "%.2f")) info.CenterX = x;
+            if (ImGui.IsItemDeactivatedAfterEdit()) cfg.Save();
+            var y = info.CenterY;
+            ImGui.SetNextItemWidth(200f);
+            if (ImGui.SliderFloat("Up / down", ref y, 0f, 1f, "%.2f")) info.CenterY = y;
+            if (ImGui.IsItemDeactivatedAfterEdit()) cfg.Save();
+            if (ImGui.Button("Reset framing")) { info.Zoom = 1f; info.CenterX = 0.5f; info.CenterY = 0.5f; cfg.Save(); }
+            ImGui.TreePop();
+        }
+    }
+
+    private void ShowImageMessage(string dir, string text)
+    {
+        imageMessageFor = dir;
+        imageMessage = text;
     }
 
     /// <summary>A star drawn with Dalamud's icon font.</summary>
@@ -325,6 +428,19 @@ public sealed class MainWindow : Window
             Plugin.Config.ModFolderOverride = folderTyping.Trim();
             Plugin.Config.Save();
             lib.Refresh();
+        }
+
+        ImGui.Spacing();
+        ImGui.TextColored(Dim, "Screenshot folder in use: " + Previews.ScreenshotDir());
+        ImGui.TextColored(Dim, "Only fill this in if you save screenshots somewhere else:");
+        if (shotFolderTyping.Length == 0 && Plugin.Config.ScreenshotFolder.Length > 0) shotFolderTyping = Plugin.Config.ScreenshotFolder;
+        ImGui.SetNextItemWidth(Math.Max(200f, ImGui.GetContentRegionAvail().X - 120f));
+        ImGui.InputText("##shots", ref shotFolderTyping, 400);
+        ImGui.SameLine();
+        if (ImGui.Button("Save##shots"))
+        {
+            Plugin.Config.ScreenshotFolder = shotFolderTyping.Trim();
+            Plugin.Config.Save();
         }
     }
 }
