@@ -1,8 +1,12 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>0.2.0.0</Version>
+    <Version>0.2.1.0</Version>
     <Description>Rafter Cat's Looking Glass: a mod previewer and information bank for Penumbra.</Description>
     <PackageProjectUrl>https://github.com/The-Kinship/looking-glass</PackageProjectUrl>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Reads Penumbra's mod_data.db (a LiteDB file) for your folders and Penumbra tags. -->
+    <PackageReference Include="LiteDB" Version="5.0.21" />
+  </ItemGroup>
 </Project>

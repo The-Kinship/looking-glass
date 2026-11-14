@@ -48,8 +48,8 @@ public sealed class MainWindow : Window
         var cfg = Plugin.Config;
         return all.Where(m =>
             {
-                if (folderFilter.Length > 0 && !string.Equals(m.TopFolder, folderFilter, StringComparison.OrdinalIgnoreCase)
-                    && !(folderFilter == "(top level)" && m.TopFolder.Length == 0)) return false;
+                if (folderFilter == "(top level)") { if (m.Folder.Length > 0) return false; }
+                else if (folderFilter.Length > 0 && !m.InFolder(folderFilter)) return false;
                 var info = cfg.InfoFor(m.Dir);
                 if (favoritesOnly && info?.Favorite != true) return false;
                 if (typeFilter == "(not set)" && (info?.Type ?? "").Length > 0) return false;
@@ -73,12 +73,18 @@ public sealed class MainWindow : Window
         searchActive = ImGui.IsItemActive();
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Searches names, Penumbra folders, authors, tags and descriptions.\nSeveral words = all of them must match.\nWhile this box is active, the up and down arrows move through the list.");
         ImGui.SameLine();
-        ImGui.SetNextItemWidth(150f);
+        ImGui.SetNextItemWidth(170f);
         if (ImGui.BeginCombo("##folder", folderFilter.Length == 0 ? "All folders" : folderFilter))
         {
             if (ImGui.Selectable("All folders", folderFilter.Length == 0)) folderFilter = "";
-            foreach (var f in all.Select(m => m.TopFolder.Length == 0 ? "(top level)" : m.TopFolder).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x))
-                if (ImGui.Selectable(f + "##f", f == folderFilter)) folderFilter = f;
+            if (ImGui.Selectable("(top level)", folderFilter == "(top level)")) folderFilter = "(top level)";
+            foreach (var f in AllFolders(all))
+            {
+                // Sub-folders are indented under their parent; picking one includes everything inside it.
+                var depth = f.Count(ch => ch == '/');
+                var label = new string(' ', depth * 4) + f[(f.LastIndexOf('/') + 1)..];
+                if (ImGui.Selectable(label + "##f" + f, f == folderFilter)) folderFilter = f;
+            }
             ImGui.EndCombo();
         }
         ImGui.SameLine();
@@ -158,6 +164,23 @@ public sealed class MainWindow : Window
         DrawSettings(lib);
     }
 
+    /// <summary>Every Penumbra folder that has mods in it (and the folders above them), in order.</summary>
+    private static List<string> AllFolders(List<ModEntry> all)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in all)
+        {
+            var f = m.Folder;
+            while (f.Length > 0)
+            {
+                set.Add(f);
+                var cut = f.LastIndexOf('/');
+                f = cut < 0 ? "" : f[..cut];
+            }
+        }
+        return set.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
     /// <summary>Moves the selection up or down the shown list and scrolls to it.</summary>
     private void Step(List<ModEntry> shown, int index, int by)
     {
@@ -199,15 +222,22 @@ public sealed class MainWindow : Window
 
         DrawInfoCard(mod);
 
+        if (mod.PenumbraTags.Count > 0) Row("Penumbra tags", string.Join(", ", mod.PenumbraTags));
+        if (mod.PenumbraNote.Length > 0) Row("Penumbra note", mod.PenumbraNote);
+
         ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.TextColored(Dim, "From the mod itself:");
+        // The mod's own info stays folded away unless you open it.
+        if (!ImGui.CollapsingHeader("From the mod itself"))
+        {
+            ImGui.PopTextWrapPos();
+            return;
+        }
 
         if (mod.MetaName != mod.DisplayName) Row("Original name", mod.MetaName);
         Row("Author", mod.Author);
         Row("Version", mod.Version);
         Row("Website", mod.Website);
-        if (mod.Tags.Count > 0) Row("Penumbra tags", string.Join(", ", mod.Tags));
+        if (mod.Tags.Count > 0) Row("Mod tags", string.Join(", ", mod.Tags));
         if (mod.Description.Length > 0)
         {
             ImGui.Spacing();
