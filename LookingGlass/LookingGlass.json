@@ -1,0 +1,10 @@
+{
+  "Author": "The Kinship",
+  "Name": "Rafter Cat's Looking Glass",
+  "Punchline": "A mod previewer and information bank for your Penumbra mods.",
+  "Description": "A searchable list of every mod in your Penumbra folder, so you can find that one shirt without trying on fifty mods. Type /lookingglass or /lglass to open.\n\n- Search by name, Penumbra folder, author or tags\n- Scroll through with the arrow keys\n- Shows where each mod sits in your Penumbra folders, with a Copy name button\n\nIt only reads your Penumbra mod list. It doesn't change your mods, and nothing goes online.",
+  "ApplicableVersion": "any",
+  "Tags": [ "penumbra", "mods", "preview", "wardrobe" ],
+  "RepoUrl": "https://github.com/The-Kinship/looking-glass",
+  "IconUrl": "https://raw.githubusercontent.com/The-Kinship/looking-glass/main/images/icon.png"
+}
