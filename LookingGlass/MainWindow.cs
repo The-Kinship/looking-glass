@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Interface.Windowing;
 
 namespace LookingGlass;
@@ -24,6 +25,8 @@ public sealed class MainWindow : Window
     private bool focusSearch;
     /// <summary>True while the search box has the keyboard (the game ignores keys then, so arrows don't move your character).</summary>
     private bool searchActive;
+    private string typeFilter = "";      // "" = all types, "(not set)" = no type picked yet
+    private bool favoritesOnly;
 
     public MainWindow() : base("Rafter Cat's Looking Glass##LookingGlassMain")
     {
@@ -42,10 +45,19 @@ public sealed class MainWindow : Window
     private List<ModEntry> Filtered(List<ModEntry> all)
     {
         var words = search.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var cfg = Plugin.Config;
         return all.Where(m =>
-                (folderFilter.Length == 0 || string.Equals(m.TopFolder, folderFilter, StringComparison.OrdinalIgnoreCase)
-                    || (folderFilter == "(top level)" && m.TopFolder.Length == 0))
-                && words.All(w => m.SearchText.Contains(w)))
+            {
+                if (folderFilter.Length > 0 && !string.Equals(m.TopFolder, folderFilter, StringComparison.OrdinalIgnoreCase)
+                    && !(folderFilter == "(top level)" && m.TopFolder.Length == 0)) return false;
+                var info = cfg.InfoFor(m.Dir);
+                if (favoritesOnly && info?.Favorite != true) return false;
+                if (typeFilter == "(not set)" && (info?.Type ?? "").Length > 0) return false;
+                if (typeFilter.Length > 0 && typeFilter != "(not set)" && info?.Type != typeFilter) return false;
+                if (words.Length == 0) return true;
+                var text = info == null ? m.SearchText : m.SearchText + "\n" + info.SearchText();
+                return words.All(w => text.Contains(w));
+            })
             .ToList();
     }
 
@@ -72,6 +84,19 @@ public sealed class MainWindow : Window
         ImGui.SameLine();
         if (ImGui.Button(lib.Loading ? "Loading..." : "Refresh") && !lib.Loading) lib.Refresh();
 
+        // Second row: type filter and favorites
+        ImGui.SetNextItemWidth(130f);
+        if (ImGui.BeginCombo("##type", typeFilter.Length == 0 ? "All types" : typeFilter))
+        {
+            if (ImGui.Selectable("All types", typeFilter.Length == 0)) typeFilter = "";
+            foreach (var t in ModInfo.Types.Where(t => t.Length > 0))
+                if (ImGui.Selectable(t + "##t", t == typeFilter)) typeFilter = t;
+            if (ImGui.Selectable("(not set)", typeFilter == "(not set)")) typeFilter = "(not set)";
+            ImGui.EndCombo();
+        }
+        ImGui.SameLine();
+        ImGui.Checkbox("Favorites only", ref favoritesOnly);
+
         var shown = Filtered(all);
         ImGui.TextColored(Dim, lib.Loading || all.Count == 0 ? lib.Status
             : $"Showing {shown.Count} of {all.Count} mods. " + (searchActive ? "Arrow keys: up and down move through the list." : "Click a mod (or the search box) to use the arrow keys."));
@@ -93,11 +118,20 @@ public sealed class MainWindow : Window
         var listWidth = Math.Max(220f, ImGui.GetContentRegionAvail().X * 0.42f);
         if (ImGui.BeginChild("##list", new Vector2(listWidth, height)))
         {
+            var starWidth = ImGui.GetFontSize() + 4f;
             foreach (var m in shown)
             {
                 var isSel = m.Dir == selectedDir;
+                var info = Plugin.Config.InfoFor(m.Dir);
+                if (info?.Favorite == true) Star(Gold);
+                else ImGui.Dummy(new Vector2(ImGui.GetFontSize(), ImGui.GetFontSize()));
+                ImGui.SameLine(starWidth);
                 if (ImGui.Selectable(m.DisplayName.Replace("##", "# #") + "##" + m.Dir, isSel)) { selectedDir = m.Dir; focusSearch = true; }
-                if (ImGui.IsItemHovered() && m.Folder.Length > 0) ImGui.SetTooltip(m.Folder);
+                if (ImGui.IsItemHovered())
+                {
+                    var tip = string.Join("\n", new[] { m.Folder, info?.Type ?? "", info?.MadeFor ?? "" }.Where(x => x.Length > 0));
+                    if (tip.Length > 0) ImGui.SetTooltip(tip);
+                }
                 if (isSel && scrollToSelected) { ImGui.SetScrollHereY(0.5f); scrollToSelected = false; }
             }
         }
@@ -163,6 +197,12 @@ public sealed class MainWindow : Window
         ImGui.Separator();
         ImGui.Spacing();
 
+        DrawInfoCard(mod);
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.TextColored(Dim, "From the mod itself:");
+
         if (mod.MetaName != mod.DisplayName) Row("Original name", mod.MetaName);
         Row("Author", mod.Author);
         Row("Version", mod.Version);
@@ -175,6 +215,61 @@ public sealed class MainWindow : Window
             ImGui.TextUnformatted(mod.Description);
         }
         ImGui.PopTextWrapPos();
+    }
+
+    /// <summary>A star drawn with Dalamud's icon font.</summary>
+    private static void Star(Vector4 color)
+    {
+        using (Plugin.PluginInterface.UiBuilder.IconFontHandle.Push())
+            ImGui.TextColored(color, FontAwesomeIcon.Star.ToIconString());
+    }
+
+    /// <summary>Your own info for this mod: favorite, type, who it's for, tags and notes. Saved as you go.</summary>
+    private static void DrawInfoCard(ModEntry mod)
+    {
+        var cfg = Plugin.Config;
+        var info = cfg.InfoFor(mod.Dir);
+        var label = 110f;
+
+        // Favorite
+        var fav = info?.Favorite == true;
+        if (ImGui.Checkbox("Favorite", ref fav)) { cfg.EditInfo(mod.Dir).Favorite = fav; cfg.Save(); }
+        if (fav) { ImGui.SameLine(); Star(Gold); }
+
+        // Type
+        var type = info?.Type ?? "";
+        ImGui.TextColored(Dim, "Type:");
+        ImGui.SameLine(label);
+        ImGui.SetNextItemWidth(160f);
+        if (ImGui.BeginCombo("##ctype", type.Length == 0 ? "Choose..." : type))
+        {
+            foreach (var t in ModInfo.Types)
+                if (ImGui.Selectable((t.Length == 0 ? "(not set)" : t) + "##ct", t == type)) { cfg.EditInfo(mod.Dir).Type = t; cfg.Save(); }
+            ImGui.EndCombo();
+        }
+
+        TextField(mod.Dir, "Made for:", "##madefor", label, i => i.MadeFor, (i, v) => i.MadeFor = v, "e.g. Miqo'te male, TBSE");
+        TextField(mod.Dir, "My tags:", "##tags", label, i => i.Tags, (i, v) => i.Tags = v, "e.g. long sleeves, laces, black");
+
+        ImGui.TextColored(Dim, "Notes:");
+        var notes = info?.Notes ?? "";
+        if (ImGui.InputTextMultiline("##notes", ref notes, 2000, new Vector2(Math.Max(100f, ImGui.GetContentRegionAvail().X - 8f), 70f)))
+            cfg.EditInfo(mod.Dir).Notes = notes;
+        if (ImGui.IsItemDeactivatedAfterEdit()) cfg.Save();
+    }
+
+    /// <summary>One labelled text box on the info card. Saves when you click away or press Enter.</summary>
+    private static void TextField(string dir, string title, string id, float labelWidth, Func<ModInfo, string> get, Action<ModInfo, string> set, string hint)
+    {
+        var cfg = Plugin.Config;
+        var info = cfg.InfoFor(dir);
+        var value = info == null ? "" : get(info);
+        ImGui.TextColored(Dim, title);
+        ImGui.SameLine(labelWidth);
+        ImGui.SetNextItemWidth(Math.Max(100f, ImGui.GetContentRegionAvail().X - 8f));
+        if (ImGui.InputText(id, ref value, 300)) set(cfg.EditInfo(dir), value);
+        if (ImGui.IsItemDeactivatedAfterEdit()) cfg.Save();
+        if (value.Length == 0 && !ImGui.IsItemActive() && ImGui.IsItemHovered()) ImGui.SetTooltip(hint);
     }
 
     private static void Row(string label, string value)
