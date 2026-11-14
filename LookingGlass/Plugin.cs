@@ -43,6 +43,7 @@ public sealed class Plugin : IDalamudPlugin
 
     public void Dispose()
     {
+        PhotoSession.End();   // never leave a mod switched on behind you
         PluginInterface.UiBuilder.Draw -= windows.Draw;
         PluginInterface.UiBuilder.OpenMainUi -= Toggle;
         PluginInterface.UiBuilder.OpenConfigUi -= Toggle;

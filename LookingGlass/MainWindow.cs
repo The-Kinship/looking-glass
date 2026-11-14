@@ -42,8 +42,11 @@ public sealed class MainWindow : Window
         SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(480, 300), MaximumSize = new Vector2(4000, 4000) };
     }
 
+    public override void OnClose() => PhotoSession.End();
+
     public override void OnOpen()
     {
+        PenumbraIpc.ForgetChangedItems();
         // Pick up mods added since last time.
         Plugin.Library.Refresh();
     }
@@ -125,6 +128,13 @@ public sealed class MainWindow : Window
         ImGui.TextColored(Dim, lib.Loading || all.Count == 0 ? lib.Status
             : $"Showing {shown.Count} of {all.Count} mods. " + (searchActive ? "Arrow keys: up and down move through the list." : "Click a mod (or the search box) to use the arrow keys."));
 
+        if (PhotoSession.Active)
+        {
+            ImGui.TextColored(Gold, "Photo session is on: the mod you pick is put on you (only until you move on).");
+            ImGui.SameLine();
+            if (ImGui.SmallButton("End photo session")) PhotoSession.End();
+        }
+
         // --- Arrow keys move through the list, but only while the search box has the keyboard,
         //     because that's when the game stops reading keys (so your character doesn't walk). ---
         var index = shown.FindIndex(m => m.Dir == selectedDir);
@@ -135,6 +145,9 @@ public sealed class MainWindow : Window
             if (ImGui.IsKeyPressed(ImGuiKey.PageDown)) Step(shown, index, +10);
             if (ImGui.IsKeyPressed(ImGuiKey.PageUp)) Step(shown, index, -10);
         }
+
+        // Photo session: put the chosen mod on (takes the last one off first).
+        if (PhotoSession.Active && selectedDir.Length > 0) PhotoSession.Show(selectedDir);
 
         // --- Left: the list ---
         var bottom = 30f;
@@ -225,6 +238,12 @@ public sealed class MainWindow : Window
             copiedAt = DateTime.UtcNow;
         }
         ImGui.SameLine();
+        if (ImGui.Button("Show in Penumbra"))
+        {
+            copiedNote = PenumbraIpc.Open(mod.Dir) ? "Opened in Penumbra." : PenumbraIpc.LastError;
+            copiedAt = DateTime.UtcNow;
+        }
+        ImGui.SameLine();
         if (ImGui.Button("Copy full path"))
         {
             ImGui.SetClipboardText(mod.PenumbraPath);
@@ -234,6 +253,7 @@ public sealed class MainWindow : Window
         if ((DateTime.UtcNow - copiedAt).TotalSeconds < 4) ImGui.TextColored(Dim, copiedNote);
 
         ImGui.Spacing();
+        DrawSessionBox(mod);
         DrawPreview(mod);
         ImGui.Spacing();
 
@@ -342,6 +362,37 @@ public sealed class MainWindow : Window
             if (ImGui.Button("Reset framing")) { info.Zoom = 1f; info.CenterX = 0.5f; info.CenterY = 0.5f; cfg.Save(); }
             ImGui.TreePop();
         }
+    }
+
+    /// <summary>Photo session controls and what the mod replaces (so you know what to wear for it to show).</summary>
+    private static void DrawSessionBox(ModEntry mod)
+    {
+        if (!PhotoSession.Active)
+        {
+            if (ImGui.Button("Start photo session"))
+                PhotoSession.Start();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Puts each mod you pick on you, one at a time, so you can screenshot it.\n"
+                    + "It only lasts until you move to the next mod or end the session.\n"
+                    + "Nothing in your Penumbra collections is changed or saved.\n"
+                    + "(Friends synced with you may see each mod while the session runs.)");
+        }
+        else
+        {
+            var on = PhotoSession.Wearing == mod.Dir;
+            ImGui.TextColored(on ? Gold : Dim, on ? "Wearing this mod now (temporarily)." : PenumbraIpc.LastError.Length > 0 ? PenumbraIpc.LastError : "Putting it on...");
+        }
+
+        var changed = PenumbraIpc.ChangedItems(mod.Dir);
+        if (changed.Count > 0)
+        {
+            ImGui.TextColored(Dim, "Wear this for it to show:");
+            ImGui.SameLine();
+            var shown = changed.Take(6).ToList();
+            ImGui.TextUnformatted(string.Join(", ", shown) + (changed.Count > shown.Count ? $" (and {changed.Count - shown.Count} more)" : ""));
+            if (changed.Count > shown.Count && ImGui.IsItemHovered()) ImGui.SetTooltip(string.Join("\n", changed.Take(40)));
+        }
+        ImGui.Spacing();
     }
 
     private void ShowImageMessage(string dir, string text)
