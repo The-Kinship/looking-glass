@@ -20,6 +20,10 @@ public sealed class MainWindow : Window
     private string folderTyping = "";
     private string copiedNote = "";
     private DateTime copiedAt = DateTime.MinValue;
+    /// <summary>Put the keyboard back in the search box next frame (after clicking a mod), so the arrow keys keep working.</summary>
+    private bool focusSearch;
+    /// <summary>True while the search box has the keyboard (the game ignores keys then, so arrows don't move your character).</summary>
+    private bool searchActive;
 
     public MainWindow() : base("Rafter Cat's Looking Glass##LookingGlassMain")
     {
@@ -51,9 +55,11 @@ public sealed class MainWindow : Window
         var all = lib.Mods;
 
         // --- Top bar: search, folder filter, refresh ---
+        if (focusSearch) { ImGui.SetKeyboardFocusHere(); focusSearch = false; }
         ImGui.SetNextItemWidth(Math.Max(120f, ImGui.GetContentRegionAvail().X - 330f));
         ImGui.InputText("Search##search", ref search, 100);
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Searches names, Penumbra folders, authors, tags and descriptions.\nSeveral words = all of them must match.");
+        searchActive = ImGui.IsItemActive();
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Searches names, Penumbra folders, authors, tags and descriptions.\nSeveral words = all of them must match.\nWhile this box is active, the up and down arrows move through the list.");
         ImGui.SameLine();
         ImGui.SetNextItemWidth(150f);
         if (ImGui.BeginCombo("##folder", folderFilter.Length == 0 ? "All folders" : folderFilter))
@@ -67,14 +73,18 @@ public sealed class MainWindow : Window
         if (ImGui.Button(lib.Loading ? "Loading..." : "Refresh") && !lib.Loading) lib.Refresh();
 
         var shown = Filtered(all);
-        ImGui.TextColored(Dim, lib.Loading || all.Count == 0 ? lib.Status : $"Showing {shown.Count} of {all.Count} mods. Use the up and down arrow keys to scroll through.");
+        ImGui.TextColored(Dim, lib.Loading || all.Count == 0 ? lib.Status
+            : $"Showing {shown.Count} of {all.Count} mods. " + (searchActive ? "Arrow keys: up and down move through the list." : "Click a mod (or the search box) to use the arrow keys."));
 
-        // --- Arrow keys move through the list (while this window is focused and you aren't typing) ---
+        // --- Arrow keys move through the list, but only while the search box has the keyboard,
+        //     because that's when the game stops reading keys (so your character doesn't walk). ---
         var index = shown.FindIndex(m => m.Dir == selectedDir);
-        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) && !ImGui.IsAnyItemActive() && shown.Count > 0)
+        if (searchActive && shown.Count > 0)
         {
-            if (ImGui.IsKeyPressed(ImGuiKey.DownArrow)) { index = Math.Min(shown.Count - 1, index + 1); selectedDir = shown[index].Dir; scrollToSelected = true; }
-            if (ImGui.IsKeyPressed(ImGuiKey.UpArrow)) { index = Math.Max(0, index - 1); selectedDir = shown[index].Dir; scrollToSelected = true; }
+            if (ImGui.IsKeyPressed(ImGuiKey.DownArrow)) Step(shown, index, +1);
+            if (ImGui.IsKeyPressed(ImGuiKey.UpArrow)) Step(shown, index, -1);
+            if (ImGui.IsKeyPressed(ImGuiKey.PageDown)) Step(shown, index, +10);
+            if (ImGui.IsKeyPressed(ImGuiKey.PageUp)) Step(shown, index, -10);
         }
 
         // --- Left: the list ---
@@ -86,7 +96,7 @@ public sealed class MainWindow : Window
             foreach (var m in shown)
             {
                 var isSel = m.Dir == selectedDir;
-                if (ImGui.Selectable(m.DisplayName.Replace("##", "# #") + "##" + m.Dir, isSel)) selectedDir = m.Dir;
+                if (ImGui.Selectable(m.DisplayName.Replace("##", "# #") + "##" + m.Dir, isSel)) { selectedDir = m.Dir; focusSearch = true; }
                 if (ImGui.IsItemHovered() && m.Folder.Length > 0) ImGui.SetTooltip(m.Folder);
                 if (isSel && scrollToSelected) { ImGui.SetScrollHereY(0.5f); scrollToSelected = false; }
             }
@@ -99,12 +109,28 @@ public sealed class MainWindow : Window
         if (ImGui.BeginChild("##details", new Vector2(0, height)))
         {
             var mod = all.FirstOrDefault(m => m.Dir == selectedDir);
-            if (mod == null) ImGui.TextColored(Dim, "Pick a mod on the left (or press the down arrow).");
-            else DrawDetails(mod);
+            if (mod == null) ImGui.TextColored(Dim, "Pick a mod on the left.");
+            else
+            {
+                if (ImGui.Button("< Previous")) { Step(shown, index, -1); focusSearch = true; }
+                ImGui.SameLine();
+                if (ImGui.Button("Next >")) { Step(shown, index, +1); focusSearch = true; }
+                ImGui.Spacing();
+                DrawDetails(mod);
+            }
         }
         ImGui.EndChild();
 
         DrawSettings(lib);
+    }
+
+    /// <summary>Moves the selection up or down the shown list and scrolls to it.</summary>
+    private void Step(List<ModEntry> shown, int index, int by)
+    {
+        if (shown.Count == 0) return;
+        var next = index < 0 ? (by > 0 ? 0 : shown.Count - 1) : Math.Clamp(index + by, 0, shown.Count - 1);
+        selectedDir = shown[next].Dir;
+        scrollToSelected = true;
     }
 
     private void DrawDetails(ModEntry mod)
