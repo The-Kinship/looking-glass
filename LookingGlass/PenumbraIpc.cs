@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 
 namespace LookingGlass;
 
@@ -83,6 +84,62 @@ public static class PenumbraIpc
         catch (Exception ex) { return Failed(ex); }
     }
 
+    /// <summary>A wearable item a mod changes: Glamourer's slot number, the item's ID, and its name.</summary>
+    public readonly record struct Wearable(byte Slot, ulong ItemId, string Name, string SlotName);
+
+    private static readonly Dictionary<string, List<Wearable>> wearCache = new();
+
+    /// <summary>Glamourer slot numbers for Penumbra's equipment types.</summary>
+    private static readonly Dictionary<string, (byte Slot, string Name)> Slots = new()
+    {
+        ["Head"] = (3, "Head"), ["Body"] = (4, "Body"), ["Hands"] = (5, "Hands"), ["Legs"] = (7, "Legs"),
+        ["Feet"] = (8, "Feet"), ["Ears"] = (9, "Earrings"), ["Neck"] = (10, "Necklace"), ["Wrists"] = (11, "Bracelets"),
+        ["Finger"] = (12, "Ring"),
+    };
+
+    /// <summary>
+    /// The gear items a mod changes, one per slot (the first Penumbra lists), for dressing you during a photo session.
+    /// Penumbra hands these over as its own item records, so they're read by name and anything unexpected is skipped.
+    /// </summary>
+    public static List<Wearable> Wearables(string modDir)
+    {
+        if (wearCache.TryGetValue(modDir, out var cached)) return cached;
+        var list = new List<Wearable>();
+        try
+        {
+            var items = Plugin.PluginInterface.GetIpcSubscriber<string, string, Dictionary<string, object?>>("Penumbra.GetChangedItems.V5")
+                .InvokeFunc(modDir, "");
+            if (items != null)
+            {
+                foreach (var (name, value) in items.OrderBy(kv => kv.Key))
+                {
+                    if (value == null) continue;
+                    var type = Member(value, "Type")?.ToString() ?? "";
+                    if (!Slots.TryGetValue(type, out var slot)) continue;      // weapons, emotes, hair etc. aren't dressed
+                    if (list.Any(w => w.Slot == slot.Slot)) continue;          // one item per slot is enough
+                    var idObj = Member(value, "Id");
+                    var raw = idObj == null ? null : Member(idObj, "Id");
+                    if (raw == null) continue;
+                    var id = Convert.ToUInt64(raw);
+                    if (id == 0) continue;
+                    list.Add(new Wearable(slot.Slot, id, name, slot.Name));
+                }
+            }
+        }
+        catch (Exception ex) { Failed(ex); }
+        wearCache[modDir] = list;
+        return list;
+    }
+
+    private static object? Member(object o, string name)
+    {
+        var t = o.GetType();
+        var f = t.GetField(name, BindingFlags.Public | BindingFlags.Instance);
+        if (f != null) return f.GetValue(o);
+        var p = t.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+        return p?.GetValue(o);
+    }
+
     private static readonly Dictionary<string, List<string>> changedCache = new();
 
     /// <summary>What the mod changes (item names like "Gambler's Shirt"), as Penumbra lists them. Cached per mod.</summary>
@@ -101,7 +158,11 @@ public static class PenumbraIpc
         return list;
     }
 
-    public static void ForgetChangedItems() => changedCache.Clear();
+    public static void ForgetChangedItems()
+    {
+        changedCache.Clear();
+        wearCache.Clear();
+    }
 
     private static bool Failed(Exception ex)
     {

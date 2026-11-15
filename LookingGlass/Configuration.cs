@@ -15,6 +15,9 @@ public class Configuration : IPluginConfiguration
     /// <summary>Your screenshot folder, only if it isn't the game's usual one ("" = Documents/My Games/FINAL FANTASY XIV - A Realm Reborn/screenshots).</summary>
     public string ScreenshotFolder { get; set; } = "";
 
+    /// <summary>During a photo session, also use Glamourer to put on the item each mod replaces.</summary>
+    public bool DressWithGlamourer { get; set; } = true;
+
     /// <summary>Your own info for each mod, by the mod's folder name.</summary>
     public Dictionary<string, ModInfo> Info { get; set; } = new();
 

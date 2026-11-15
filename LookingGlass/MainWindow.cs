@@ -371,6 +371,13 @@ public sealed class MainWindow : Window
         {
             if (ImGui.Button("Start photo session"))
                 PhotoSession.Start();
+            ImGui.SameLine();
+            var dress = Plugin.Config.DressWithGlamourer;
+            if (ImGui.Checkbox("Also dress me with Glamourer", ref dress)) { Plugin.Config.DressWithGlamourer = dress; Plugin.Config.Save(); }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Glamourer puts on the item each mod replaces, so the mod actually shows.\n"
+                    + "Your current look is saved first and put back after each mod and when the session ends.\n"
+                    + "Your Glamourer designs, automation and glamour plates are never changed.");
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Puts each mod you pick on you, one at a time, so you can screenshot it.\n"
                     + "It only lasts until you move to the next mod or end the session.\n"
@@ -381,6 +388,15 @@ public sealed class MainWindow : Window
         {
             var on = PhotoSession.Wearing == mod.Dir;
             ImGui.TextColored(on ? Gold : Dim, on ? "Wearing this mod now (temporarily)." : PenumbraIpc.LastError.Length > 0 ? PenumbraIpc.LastError : "Putting it on...");
+            if (on && PhotoSession.Dressing)
+            {
+                if (PhotoSession.Dressed.Count > 0)
+                    ImGui.TextColored(Dim, "Glamourer dressed you in: " + string.Join(", ", PhotoSession.Dressed.Select(w => $"{w.Name} ({w.SlotName})")));
+                else
+                    ImGui.TextColored(Dim, GlamourerIpc.LastError.Length > 0 ? GlamourerIpc.LastError : "Nothing to dress for this one (not a gear mod), so your own look stays on.");
+            }
+            else if (on && Plugin.Config.DressWithGlamourer && GlamourerIpc.LastError.Length > 0)
+                ImGui.TextColored(Dim, GlamourerIpc.LastError);
         }
 
         var changed = PenumbraIpc.ChangedItems(mod.Dir);
