@@ -1,3 +1,4 @@
+0.7.0: "Only the mod" for photo sessions (on by default). For gear mods, Glamourer empties your other clothing slots (head, body, hands, legs, feet), so trying on pants takes your boots and top off and only the mod shows. Your look comes back after each mod and when the session ends.
 0.6.0: Mod options in photo sessions. New "Turn on every piece" (on by default) switches on every option in pick-several groups, so outfits with a separate shirt, mask and so on show all their pieces. While a mod is on, its options are listed on the card: tick pieces on and off, or pick a color or variant, and it changes straight away. Still temporary; your Penumbra settings aren't changed.
 0.5.2: Fixed Glamourer dressing during photo sessions (the "no dye" value wasn't reaching Glamourer in a form it could read).
 0.5.1: When Glamourer or Penumbra report a problem, the Looking Glass now shows their actual error and which step failed, instead of "isn't answering".
