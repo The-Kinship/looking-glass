@@ -396,7 +396,11 @@ public sealed class MainWindow : Window
                     ImGui.TextColored(Dim, GlamourerIpc.LastError.Length > 0 ? GlamourerIpc.LastError : "Nothing to dress for this one (not a gear mod), so your own look stays on.");
             }
             else if (on && Plugin.Config.DressWithGlamourer && GlamourerIpc.LastError.Length > 0)
-                ImGui.TextColored(Dim, GlamourerIpc.LastError);
+            {
+                ImGui.PushTextWrapPos(0f);
+                ImGui.TextColored(new Vector4(1f, 0.55f, 0.45f, 1f), GlamourerIpc.LastError);
+                ImGui.PopTextWrapPos();
+            }
         }
 
         var changed = PenumbraIpc.ChangedItems(mod.Dir);

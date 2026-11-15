@@ -37,7 +37,7 @@ public static class GlamourerIpc
             lastError = "";
             return true;
         }
-        catch (Exception ex) { return Failed(ex); }
+        catch (Exception ex) { return Failed(ex, "saving your look"); }
     }
 
     /// <summary>Puts your look back to the snapshot (without forgetting it, so it can be used again).</summary>
@@ -49,7 +49,7 @@ public static class GlamourerIpc
             Plugin.PluginInterface.GetIpcSubscriber<object, int, uint, ulong, int>("Glamourer.ApplyState")
                 .InvokeFunc(snapshot, Self, Key, EquipmentAndLooks);
         }
-        catch (Exception ex) { Failed(ex); }
+        catch (Exception ex) { Failed(ex, "putting your look back"); }
     }
 
     /// <summary>Puts your look back, unlocks anything we touched, and forgets the snapshot.</summary>
@@ -71,13 +71,15 @@ public static class GlamourerIpc
             lastError = ec == 0 ? "" : "Glamourer couldn't put that item on (code " + ec + ").";
             return ec == 0;
         }
-        catch (Exception ex) { return Failed(ex); }
+        catch (Exception ex) { return Failed(ex, "putting the item on"); }
     }
 
-    private static bool Failed(Exception ex)
+    private static bool Failed(Exception ex, string step)
     {
-        Plugin.Log.Warning(ex, "Glamourer call failed.");
-        lastError = "Glamourer isn't answering. Is it installed and turned on?";
+        Plugin.Log.Warning(ex, "Glamourer call failed while " + step + ".");
+        // Show the real reason, so problems can be tracked down from a screenshot.
+        var inner = ex.InnerException ?? ex;
+        lastError = $"Glamourer problem while {step}: {inner.GetType().Name}: {inner.Message}";
         return false;
     }
 }

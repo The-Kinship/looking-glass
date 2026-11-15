@@ -1,6 +1,6 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>0.5.0.0</Version>
+    <Version>0.5.1.0</Version>
     <Description>Rafter Cat's Looking Glass: a mod previewer and information bank for Penumbra.</Description>
     <PackageProjectUrl>https://github.com/The-Kinship/looking-glass</PackageProjectUrl>
     <IsPackable>false</IsPackable>

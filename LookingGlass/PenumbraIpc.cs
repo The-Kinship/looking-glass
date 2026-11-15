@@ -167,7 +167,8 @@ public static class PenumbraIpc
     private static bool Failed(Exception ex)
     {
         Plugin.Log.Warning(ex, "Penumbra call failed.");
-        lastError = "Penumbra isn't answering. Is it installed and turned on?";
+        var inner = ex.InnerException ?? ex;
+        lastError = $"Penumbra problem: {inner.GetType().Name}: {inner.Message}";
         return false;
     }
 }
