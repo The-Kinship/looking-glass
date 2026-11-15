@@ -18,22 +18,47 @@ public static class PenumbraIpc
     private const int Self = 0;            // your own character
     private const int PriorityOnTop = 999_999;
 
-    private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> DefaultOptions =
-        new Dictionary<string, IReadOnlyList<string>>();
+    /// <summary>One of a mod's option groups: its options, and whether you can pick several at once.</summary>
+    public sealed record OptionGroup(string Name, string[] Options, bool PickSeveral);
+
+    private static readonly Dictionary<string, List<OptionGroup>> optionCache = new();
+
+    /// <summary>The mod's option groups, as Penumbra lists them (empty if it has none).</summary>
+    public static List<OptionGroup> Options(string modDir)
+    {
+        if (optionCache.TryGetValue(modDir, out var cached)) return cached;
+        var list = new List<OptionGroup>();
+        try
+        {
+            var groups = Plugin.PluginInterface.GetIpcSubscriber<string, string, IReadOnlyDictionary<string, ValueTuple<string[], int>>?>(
+                "Penumbra.GetAvailableModSettings.V5").InvokeFunc(modDir, "");
+            if (groups != null)
+                foreach (var (name, (options, type)) in groups)
+                    if (options.Length > 0)
+                        list.Add(new OptionGroup(name, options, type != 0));   // 0 = pick one; the other kinds allow several
+        }
+        catch (Exception ex) { Failed(ex); }
+        optionCache[modDir] = list;
+        return list;
+    }
 
     private static string lastError = "";
     /// <summary>The last problem talking to Penumbra ("" if none).</summary>
     public static string LastError => lastError;
 
-    /// <summary>Puts one mod on you temporarily: enabled, above everything else, default options.</summary>
-    public static bool TryOn(string modDir)
+    /// <summary>Puts one mod on you temporarily: enabled, above everything else, with the chosen options
+    /// (groups left out use the mod's defaults).</summary>
+    public static bool TryOn(string modDir, Dictionary<string, List<string>> choices)
     {
         try
         {
             var ipc = Plugin.PluginInterface.GetIpcSubscriber<int, string, string,
                 ValueTuple<bool, bool, int, IReadOnlyDictionary<string, IReadOnlyList<string>>>, string, int, int>(
                 "Penumbra.SetTemporaryModSettingsPlayer.V5");
-            var result = ipc.InvokeFunc(Self, modDir, "", (false, true, PriorityOnTop, DefaultOptions), Source, Key);
+            // Plain Dictionary/List types: Dalamud converts these to the read-only types Penumbra expects.
+            var options = new Dictionary<string, IReadOnlyList<string>>();
+            foreach (var (group, picked) in choices) options[group] = new List<string>(picked);
+            var result = ipc.InvokeFunc(Self, modDir, "", (false, true, PriorityOnTop, options), Source, Key);
             if (result != 0) { lastError = "Penumbra said no (code " + result + ")."; return false; }
             Redraw();
             lastError = "";
@@ -162,6 +187,7 @@ public static class PenumbraIpc
     {
         changedCache.Clear();
         wearCache.Clear();
+        optionCache.Clear();
     }
 
     private static bool Failed(Exception ex)

@@ -18,6 +18,9 @@ public class Configuration : IPluginConfiguration
     /// <summary>During a photo session, also use Glamourer to put on the item each mod replaces.</summary>
     public bool DressWithGlamourer { get; set; } = true;
 
+    /// <summary>During a photo session, turn on every option in "pick several" groups (shirts, masks and other pieces).</summary>
+    public bool AllPiecesOn { get; set; } = true;
+
     /// <summary>Your own info for each mod, by the mod's folder name.</summary>
     public Dictionary<string, ModInfo> Info { get; set; } = new();
 

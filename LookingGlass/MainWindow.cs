@@ -374,6 +374,13 @@ public sealed class MainWindow : Window
             ImGui.SameLine();
             var dress = Plugin.Config.DressWithGlamourer;
             if (ImGui.Checkbox("Also dress me with Glamourer", ref dress)) { Plugin.Config.DressWithGlamourer = dress; Plugin.Config.Save(); }
+            ImGui.SameLine();
+            var all = Plugin.Config.AllPiecesOn;
+            if (ImGui.Checkbox("Turn on every piece", ref all)) { Plugin.Config.AllPiecesOn = all; Plugin.Config.Save(); }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("For mods with options you can tick several of (like a shirt, a mask and pants),\n"
+                    + "turn them all on during the photo session. One-choice options (like colors) stay on the mod's default.\n"
+                    + "You can change any option on the card while the session is running.");
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Glamourer puts on the item each mod replaces, so the mod actually shows.\n"
                     + "Your current look is saved first and put back after each mod and when the session ends.\n"
@@ -388,6 +395,7 @@ public sealed class MainWindow : Window
         {
             var on = PhotoSession.Wearing == mod.Dir;
             ImGui.TextColored(on ? Gold : Dim, on ? "Wearing this mod now (temporarily)." : PenumbraIpc.LastError.Length > 0 ? PenumbraIpc.LastError : "Putting it on...");
+            if (on) DrawOptions(mod);
             if (on && PhotoSession.Dressing)
             {
                 if (PhotoSession.Dressed.Count > 0)
@@ -413,6 +421,53 @@ public sealed class MainWindow : Window
             if (changed.Count > shown.Count && ImGui.IsItemHovered()) ImGui.SetTooltip(string.Join("\n", changed.Take(40)));
         }
         ImGui.Spacing();
+    }
+
+    /// <summary>The mod's options during a photo session: tick boxes for pick-several groups, a drop-down for pick-one groups.</summary>
+    private static void DrawOptions(ModEntry mod)
+    {
+        var groups = PenumbraIpc.Options(mod.Dir);
+        if (groups.Count == 0) return;
+        if (!ImGui.TreeNodeEx("Options for this photo##opts", ImGuiTreeNodeFlags.DefaultOpen)) return;
+        foreach (var g in groups)
+        {
+            ImGui.PushID("grp:" + g.Name);
+            PhotoSession.Choices.TryGetValue(g.Name, out var picked);
+            if (g.PickSeveral)
+            {
+                ImGui.TextColored(Dim, g.Name + ":");
+                var current = picked ?? new List<string>();
+                for (var i = 0; i < g.Options.Length; i++)
+                {
+                    var opt = g.Options[i];
+                    var isOn = current.Contains(opt);
+                    if (i > 0) ImGui.SameLine();
+                    if (ImGui.Checkbox(opt + "##o" + i, ref isOn))
+                    {
+                        var next = g.Options.Where(o => o == opt ? isOn : current.Contains(o)).ToList();
+                        PhotoSession.SetChoice(g.Name, next);
+                    }
+                }
+                if (picked == null) { ImGui.SameLine(); ImGui.TextColored(Dim, "(mod's default)"); }
+            }
+            else
+            {
+                ImGui.TextColored(Dim, g.Name + ":");
+                ImGui.SameLine();
+                ImGui.SetNextItemWidth(200f);
+                var shown = picked is { Count: > 0 } ? picked[0] : "(mod's default)";
+                if (ImGui.BeginCombo("##one", shown))
+                {
+                    if (ImGui.Selectable("(mod's default)", picked == null)) PhotoSession.ClearChoice(g.Name);
+                    for (var i = 0; i < g.Options.Length; i++)
+                        if (ImGui.Selectable(g.Options[i] + "##o" + i, picked is { Count: > 0 } && picked[0] == g.Options[i]))
+                            PhotoSession.SetChoice(g.Name, new List<string> { g.Options[i] });
+                    ImGui.EndCombo();
+                }
+            }
+            ImGui.PopID();
+        }
+        ImGui.TreePop();
     }
 
     private void ShowImageMessage(string dir, string text)

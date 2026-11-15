@@ -17,6 +17,9 @@ public static class PhotoSession
     /// <summary>True when Glamourer dressing is on for this session (a snapshot of your look was taken).</summary>
     public static bool Dressing { get; private set; }
 
+    /// <summary>The options chosen for the mod you're wearing: group name to picked options (groups left out = mod default).</summary>
+    public static Dictionary<string, List<string>> Choices { get; private set; } = new();
+
     /// <summary>The last mod we tried to put on, so a failed one isn't retried every frame.</summary>
     private static string tried = "";
 
@@ -41,12 +44,38 @@ public static class PhotoSession
         if (Dressing && Dressed.Count > 0) GlamourerIpc.Restore();
         Dressed = new();
 
-        Wearing = PenumbraIpc.TryOn(modDir) ? modDir : "";
+        Choices = StartingChoices(modDir);
+        Wearing = PenumbraIpc.TryOn(modDir, Choices) ? modDir : "";
         if (Wearing.Length == 0) PenumbraIpc.Redraw();
 
         if (Dressing && Wearing.Length > 0)
             foreach (var w in PenumbraIpc.Wearables(modDir))
                 if (GlamourerIpc.Wear(w.Slot, w.ItemId)) Dressed.Add(w);
+    }
+
+    /// <summary>"Turn on every piece": every option in pick-several groups; pick-one groups stay on the mod's default.</summary>
+    private static Dictionary<string, List<string>> StartingChoices(string modDir)
+    {
+        var choices = new Dictionary<string, List<string>>();
+        if (!Plugin.Config.AllPiecesOn) return choices;
+        foreach (var g in PenumbraIpc.Options(modDir))
+            if (g.PickSeveral) choices[g.Name] = g.Options.ToList();
+        return choices;
+    }
+
+    /// <summary>Changes the options on the mod you're wearing and redraws you.</summary>
+    public static void SetChoice(string group, List<string> picked)
+    {
+        if (!Active || Wearing.Length == 0) return;
+        Choices[group] = picked;
+        PenumbraIpc.TryOn(Wearing, Choices);
+    }
+
+    /// <summary>Puts a group back to the mod's own default.</summary>
+    public static void ClearChoice(string group)
+    {
+        if (!Active || Wearing.Length == 0 || !Choices.Remove(group)) return;
+        PenumbraIpc.TryOn(Wearing, Choices);
     }
 
     public static void End()
@@ -59,5 +88,6 @@ public static class PhotoSession
         if (Dressing) GlamourerIpc.RestoreAndForget();
         Dressing = false;
         Dressed = new();
+        Choices = new();
     }
 }
