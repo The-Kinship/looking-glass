@@ -15,7 +15,8 @@ public static class GlamourerIpc
     private const ulong Once = 0x01;          // apply once, don't force anything into automation
     private const ulong EquipmentAndLooks = 0x01 | 0x02 | 0x04;   // once + equipment + customization (your whole look)
 
-    private static readonly IReadOnlyList<byte> NoDye = new byte[] { 0, 0 };
+    // A List (not a byte[]): Dalamud passes byte arrays between plugins as text, which Glamourer can't read back as dyes.
+    private static readonly IReadOnlyList<byte> NoDye = new List<byte> { 0, 0 };
 
     /// <summary>Your look from just before the session ("" = none taken).</summary>
     private static string snapshot = "";
