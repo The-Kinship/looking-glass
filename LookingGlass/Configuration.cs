@@ -21,6 +21,9 @@ public class Configuration : IPluginConfiguration
     /// <summary>During a photo session, turn on every option in "pick several" groups (shirts, masks and other pieces).</summary>
     public bool AllPiecesOn { get; set; } = true;
 
+    /// <summary>During a photo session, empty the clothing slots a gear mod doesn't use, so only the mod shows.</summary>
+    public bool HideOtherClothes { get; set; } = true;
+
     /// <summary>Your own info for each mod, by the mod's folder name.</summary>
     public Dictionary<string, ModInfo> Info { get; set; } = new();
 

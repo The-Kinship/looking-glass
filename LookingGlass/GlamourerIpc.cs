@@ -75,6 +75,12 @@ public static class GlamourerIpc
         catch (Exception ex) { return Failed(ex, "putting the item on"); }
     }
 
+    /// <summary>The five clothing slots (head, body, hands, legs, feet), as Glamourer numbers them.</summary>
+    public static readonly (byte Slot, string Name)[] ClothingSlots = { (3, "Head"), (4, "Body"), (5, "Hands"), (7, "Legs"), (8, "Feet") };
+
+    /// <summary>Empties a slot (Glamourer's "Nothing", the same as clearing it in Glamourer's own window).</summary>
+    public static bool Empty(byte slot) => Wear(slot, 0);
+
     private static bool Failed(Exception ex, string step)
     {
         Plugin.Log.Warning(ex, "Glamourer call failed while " + step + ".");

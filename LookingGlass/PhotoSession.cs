@@ -14,6 +14,9 @@ public static class PhotoSession
     public static string Wearing { get; private set; } = "";
     /// <summary>Items Glamourer put on you for the current mod (empty if none).</summary>
     public static List<PenumbraIpc.Wearable> Dressed { get; private set; } = new();
+    /// <summary>Clothing slots emptied for the current mod (e.g. "Feet").</summary>
+    public static List<string> Emptied { get; private set; } = new();
+
     /// <summary>True when Glamourer dressing is on for this session (a snapshot of your look was taken).</summary>
     public static bool Dressing { get; private set; }
 
@@ -41,8 +44,9 @@ public static class PhotoSession
         if (Wearing.Length > 0) PenumbraIpc.TakeOff(Wearing);
 
         // Back to your own look first, so pieces from the last mod never pile up.
-        if (Dressing && Dressed.Count > 0) GlamourerIpc.Restore();
+        if (Dressing && (Dressed.Count > 0 || Emptied.Count > 0)) GlamourerIpc.Restore();
         Dressed = new();
+        Emptied = new();
 
         Choices = StartingChoices(modDir);
         Wearing = PenumbraIpc.TryOn(modDir, Choices) ? modDir : "";
@@ -51,6 +55,11 @@ public static class PhotoSession
         if (Dressing && Wearing.Length > 0)
             foreach (var w in PenumbraIpc.Wearables(modDir))
                 if (GlamourerIpc.Wear(w.Slot, w.ItemId)) Dressed.Add(w);
+
+        // Only the mod: empty the other clothing slots (gear mods only; hair, tattoo and body mods leave your clothes alone).
+        if (Dressing && Dressed.Count > 0 && Plugin.Config.HideOtherClothes)
+            foreach (var (slot, name) in GlamourerIpc.ClothingSlots)
+                if (Dressed.All(d => d.Slot != slot) && GlamourerIpc.Empty(slot)) Emptied.Add(name);
     }
 
     /// <summary>"Turn on every piece": every option in pick-several groups; pick-one groups stay on the mod's default.</summary>
@@ -88,6 +97,7 @@ public static class PhotoSession
         if (Dressing) GlamourerIpc.RestoreAndForget();
         Dressing = false;
         Dressed = new();
+        Emptied = new();
         Choices = new();
     }
 }

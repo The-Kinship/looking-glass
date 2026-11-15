@@ -375,6 +375,12 @@ public sealed class MainWindow : Window
             var dress = Plugin.Config.DressWithGlamourer;
             if (ImGui.Checkbox("Also dress me with Glamourer", ref dress)) { Plugin.Config.DressWithGlamourer = dress; Plugin.Config.Save(); }
             ImGui.SameLine();
+            var hide = Plugin.Config.HideOtherClothes;
+            if (ImGui.Checkbox("Only the mod", ref hide)) { Plugin.Config.HideOtherClothes = hide; Plugin.Config.Save(); }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("For gear mods, empties your other clothing slots (head, body, hands, legs, feet)\n"
+                    + "so only the mod shows. Example: trying on pants takes your boots and top off.\n"
+                    + "Needs \"Also dress me with Glamourer\". Your look comes back after each mod and when the session ends.");
             var all = Plugin.Config.AllPiecesOn;
             if (ImGui.Checkbox("Turn on every piece", ref all)) { Plugin.Config.AllPiecesOn = all; Plugin.Config.Save(); }
             if (ImGui.IsItemHovered())
@@ -399,7 +405,12 @@ public sealed class MainWindow : Window
             if (on && PhotoSession.Dressing)
             {
                 if (PhotoSession.Dressed.Count > 0)
+                {
+                    ImGui.PushTextWrapPos(0f);
                     ImGui.TextColored(Dim, "Glamourer dressed you in: " + string.Join(", ", PhotoSession.Dressed.Select(w => $"{w.Name} ({w.SlotName})")));
+                    if (PhotoSession.Emptied.Count > 0) ImGui.TextColored(Dim, "Taken off so only the mod shows: " + string.Join(", ", PhotoSession.Emptied));
+                    ImGui.PopTextWrapPos();
+                }
                 else
                     ImGui.TextColored(Dim, GlamourerIpc.LastError.Length > 0 ? GlamourerIpc.LastError : "Nothing to dress for this one (not a gear mod), so your own look stays on.");
             }
